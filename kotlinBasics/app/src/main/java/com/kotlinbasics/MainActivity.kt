@@ -75,18 +75,36 @@ private fun week03Classes() {
     person1.introduce()
     person1.birthday()
 
-    class Animal(var species: String){
+    open class Animal(var species: String){
         var weight: Double = 0.0
         constructor(species: String, weight: Double): this(species){
             this.weight = weight
             Log.d("KotlineWeek03", "$species 의 무게 : $weight kg")
         }
-        fun makeSound(){
+        open fun makeSound(){
             Log.d("KotlinWeek03", "$species 가 소리를 냅니다.")
         }
     }
-    val puppy = Animal("웰시코기", 10.5)
+    val puppy = Animal("강아지", 10.5)
     puppy.makeSound()
+                //Animal은 상속될 수 없는 상황 open으로 상속가능하게 바꾸자
+    class Dog(species: String, weight: Double, val breed: String) : Animal(species, weight){
+        // 메서드도 open 키워드를 써야 상속이 가능함
+        override fun makeSound(){
+            Log.d("KotlinWeek03", "$breed($species)가 멍멍 짖습니다.")
+        }
+    }
+    val dog = Dog("개", 12.5, "골든 리트리버")
+    dog.makeSound()
+
+    data class Book(val title: String, val author: String, val pages: Int){
+        //data class의 특징
+    }
+    val book1 = Book("코틀린 입문","Kim",400)
+    val book2 = Book("코틀린 입문","Kim",400)
+
+    Log.d("KotlinWeek03", "book1 == book2: ${book1 == book2}")
+    Log.d("KotlinWeek03", "book1: $book1")
     }
 
 private fun week02Functions(){
