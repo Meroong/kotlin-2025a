@@ -30,7 +30,29 @@ class MainActivity : ComponentActivity() {
         week02Functions()
         week02Variable()
         week03Classes()
+        week03Collections()
     }
+}
+
+private fun week03Collections(){
+    println("== Kotlin Collections ==")
+
+    val fruits = listOf("apple","banna","orange")
+    val mutableFruits = mutableListOf("kiwi", "watermelon")
+
+    //fruits.add("kiwi") 불변자료 리스트타입이라 add는 컴파일 에러 뮤터블과 차이
+    println("Fruits : $fruits")
+    mutableFruits.add("banana")
+    println("Mutable fruits : $mutableFruits")
+
+    val scores = mapOf("Kim" to 100, "Park" to 97, "Lee" to 99)
+    println("Scores: $scores")
+
+    for(fruit in mutableFruits){
+        println("I like $fruits")
+    }
+
+    scores.forEach{(name, score)-> println("Name: $name, Score: $score")}
 }
 
 private fun week03Classes(){
@@ -48,6 +70,13 @@ private fun week03Classes(){
     student.name = "Mirae"
     student.age = 21
     student.introduce()
+
+    data class Person(val name: String, val age: Int)
+
+    val person1 = Person("Kim", 23)
+    val person2 = Person("kim", 23)
+    println("Person1 : $person1")
+    println("Equal? ${person1 == person2}")
 }
 private fun week02Functions(){
     //println("Week 02: Functions")
