@@ -1,4 +1,4 @@
-package com.appweek09
+package com.appweek10
 
 import android.os.Bundle
 import android.util.Log
@@ -6,21 +6,28 @@ import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.appweek09.data.Student
-import com.appweek09.databinding.ActivityMainBinding
+import com.appweek10.data.Student
+import com.appweek10.data.StudentDatabase
+import com.appweek10.databinding.ActivityMainBinding
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
-    private lateinit var studentList: ArrayList<Student>
+    // Room Database 관련
+    private lateinit var database: StudentDatabase
     private lateinit var adapter: StudentAdapter
 
+    // 현재 표시 중인 데이터
+    private var currentStudents: List<Student> = emptyList()
+
     companion object {
-        private const val TAG = "KotlinWeek09App"
+        private const val TAG = "KotlinWeek10App"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,17 +35,21 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        Log.d(TAG, "onCreate: AppWeek09 RecyclerView started")
+        Log.d(TAG, "onCreate: AppWeek10 Room Database started")
+
+        // Room Database 초기화
+        database = StudentDatabase.getDatabase(this)
 
         setupViews()
         setupRecyclerView()
         setupListeners()
-        addInitialData()
+        observeStudents()
     }
 
+    /**
+     * UI 요소 초기화
+     */
     private fun setupViews() {
-        studentList = ArrayList()
-
         val layouts = arrayOf("Linear", "Grid (2 columns)", "Grid (3 columns)")
         val layoutAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, layouts)
         layoutAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -47,9 +58,12 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "Views initialized")
     }
 
+    /**
+     * RecyclerView 설정
+     */
     private fun setupRecyclerView() {
         adapter = StudentAdapter(
-            studentList,
+            studentList = emptyList(),
             onItemClick = { student, position ->
                 handleItemClick(student, position)
             },
@@ -60,7 +74,6 @@ class MainActivity : AppCompatActivity() {
 
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = adapter
-
         binding.recyclerView.addItemDecoration(
             DividerItemDecoration(this, DividerItemDecoration.VERTICAL)
         )
@@ -68,6 +81,9 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "RecyclerView setup completed")
     }
 
+    /**
+     * 이벤트 리스너 설정
+     */
     private fun setupListeners() {
         binding.buttonAdd.setOnClickListener {
             addStudent()
@@ -88,6 +104,25 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "Event listeners setup completed")
     }
 
+    /**
+     * Room Database에서 데이터 관찰 (실시간 업데이트)
+     * - Flow를 사용하여 데이터 변경 감지
+     * - 자동으로 adapter 업데이트
+     */
+    private fun observeStudents() {
+        lifecycleScope.launch {
+            database.studentDao().getAllStudents().collect { students ->
+                currentStudents = students
+                adapter.updateList(students)
+                updateStudentCount()
+                Log.d(TAG, "Students updated: ${students.size}")
+            }
+        }
+    }
+
+    /**
+     * 학생 추가 (Room Database에 저장)
+     */
     private fun addStudent() {
         val studentName = binding.editTextStudent.text.toString().trim()
 
@@ -97,66 +132,76 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        if (studentList.any { it.name == studentName }) {
+        // 이미 있는 이름인지 확인
+        if (currentStudents.any { it.name == studentName }) {
             showToast("Student '$studentName' already exists")
             Log.w(TAG, "Duplicate student: $studentName")
             return
         }
 
-        val student = Student(
+        // 새 학생 객체 생성
+        val newStudent = Student(
             name = studentName,
             department = "Computer Science",
-            grade = "Year ${(Math.random() * 4 + 1).toInt()}",
+            grade = "Year ${(1..4).random()}",
             email = "${studentName.replace(" ", ".")}@university.edu"
         )
 
-        studentList.add(student)
-        adapter.notifyItemInserted(studentList.size - 1)
-        binding.editTextStudent.text.clear()
-        updateStudentCount()
-
-        showToast("Added: $studentName")
-        Log.d(TAG, "Added student: $studentName (Total: ${studentList.size})")
-    }
-
-    private fun removeStudent(position: Int) {
-        if (position >= 0 && position < studentList.size) {
-            val removedStudent = studentList.removeAt(position)
-            adapter.notifyItemRemoved(position)
-            updateStudentCount()
-
-            showToast("Removed: ${removedStudent.name}")
-            Log.d(TAG, "Removed student: ${removedStudent.name} at position $position")
+        // 비동기로 데이터베이스에 저장
+        lifecycleScope.launch {
+            database.studentDao().insertStudent(newStudent)
+            binding.editTextStudent.text.clear()
+            showToast("Added: $studentName")
+            Log.d(TAG, "Added student: $studentName")
         }
     }
 
+    /**
+     * 학생 삭제
+     */
+    private fun removeStudent(student: Student) {
+        lifecycleScope.launch {
+            database.studentDao().deleteStudent(student)
+            showToast("Removed: ${student.name}")
+            Log.d(TAG, "Removed student: ${student.name}")
+        }
+    }
+
+    /**
+     * 모든 학생 삭제
+     */
     private fun clearAllStudents() {
-        if (studentList.isEmpty()) {
+        if (currentStudents.isEmpty()) {
             showToast("List is already empty")
             return
         }
 
-        val count = studentList.size
-        studentList.clear()
-        adapter.notifyDataSetChanged()
-        updateStudentCount()
+        val count = currentStudents.size
 
-        showToast("Cleared all $count students")
-        Log.d(TAG, "Cleared all students")
+        lifecycleScope.launch {
+            database.studentDao().deleteAllStudents()
+            showToast("Cleared all $count students")
+            Log.d(TAG, "Cleared all students")
+        }
     }
 
+    /**
+     * 학생 수 업데이트
+     */
     private fun updateStudentCount() {
-        binding.textViewInfo.text = "Total Students: ${studentList.size}"
+        binding.textViewInfo.text = "Total Students: ${currentStudents.size}"
     }
 
+    /**
+     * 아이템 클릭 처리
+     */
     private fun handleItemClick(student: Student, position: Int) {
         val message = """
             Name: ${student.name}
-            ID: ${student.id.take(8)}...
             Department: ${student.department}
             Grade: ${student.grade}
             Email: ${student.email}
-            Position: ${position + 1}
+            Added: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(student.addedDate)}
         """.trimIndent()
 
         AlertDialog.Builder(this)
@@ -165,20 +210,30 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("OK", null)
             .show()
 
-        Log.d(TAG, "Clicked student: ${student.name} at position $position")
+        Log.d(TAG, "Clicked student: ${student.name}")
     }
 
+    /**
+     * 아이템 롱클릭 처리
+     */
     private fun handleItemLongClick(position: Int) {
-        AlertDialog.Builder(this)
-            .setTitle("Delete Student")
-            .setMessage("Are you sure you want to delete this student?")
-            .setPositiveButton("Delete") { _, _ ->
-                removeStudent(position)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        if (position < currentStudents.size) {
+            val student = currentStudents[position]
+
+            AlertDialog.Builder(this)
+                .setTitle("Delete Student")
+                .setMessage("Are you sure you want to delete ${student.name}?")
+                .setPositiveButton("Delete") { _, _ ->
+                    removeStudent(student)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
     }
 
+    /**
+     * LayoutManager 변경
+     */
     private fun changeLayoutManager(layoutType: Int) {
         binding.recyclerView.layoutManager = when (layoutType) {
             0 -> LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
@@ -190,40 +245,20 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "Changed layout to type: $layoutType")
     }
 
-    private fun addInitialData() {
-        val initialStudents = listOf(
-            Student("KIM", department = "Computer Science", grade = "3rd Year",
-                email = "kim.cs@univ.edu"),
-            Student("LEE", department = "Software Engineering", grade = "2nd Year",
-                email = "lee.se@univ.edu"),
-            Student("PARK", department = "Computer Science", grade = "1st Year",
-                email = "park.cs@univ.edu"),
-            Student("CHOI", department = "Data Science", grade = "4th Year",
-                email = "choi.ds@univ.edu"),
-            Student("JUNG", department = "Computer Science", grade = "2nd Year",
-                email = "jung.cs@univ.edu"),
-            Student("WOO", department = "Software Engineering", grade = "3rd Year",
-                email = "woo.se@univ.edu")
-        )
-
-        studentList.addAll(initialStudents)
-        adapter.notifyDataSetChanged()
-        updateStudentCount()
-
-        Log.d(TAG, "Added initial data: ${initialStudents.size} students")
-    }
-
+    /**
+     * Toast 메시지 표시
+     */
     private fun showToast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     override fun onResume() {
         super.onResume()
-        Log.d(TAG, "onResume: Current student count: ${studentList.size}")
+        Log.d(TAG, "onResume: Current students: ${currentStudents.size}")
     }
 
     override fun onPause() {
         super.onPause()
-        Log.d(TAG, "onPause: Saving state with ${studentList.size} students")
+        Log.d(TAG, "onPause: Database operations saved")
     }
 }
